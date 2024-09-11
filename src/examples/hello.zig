@@ -60,6 +60,7 @@ const Path = routers.Path;
 
 const Router = routers.DefineRouter(std.meta.Tuple(&.{}), .{
     Path("/", countedHelloWorld),
+    Path("/favicon.ico", haiya.handlers.AlwaysNotFound(.{}).handle),
     Path("/{}", namedHelloWorld),
 });
 
