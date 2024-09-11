@@ -415,6 +415,7 @@ pub fn writeBodyStart(self: *Self, size: BodySize, contentType: []const u8) !Bod
 ///
 /// This function does not hold any lock.
 pub fn writeBodyNoContent(self: *Self) !void {
+    try self.setBodySize(.{ .Sized = 0 });
     try self.writeResponse();
 }
 
@@ -424,7 +425,7 @@ pub fn writeBodyNoContent(self: *Self) !void {
 /// If your content is already compressed and you want ask the user agent decompress
 /// it, just set `Content-Encoding: <compression>` header and write the body normally.
 ///
-/// You only use this function only if you are required to compress the data on-the-fly.
+/// You use this function only if you are required to compress the data on-the-fly.
 ///
 /// Compressed messages leave you to the compression-related
 /// attack, like [the BREACH attack](https://en.wikipedia.org/wiki/BREACH).
