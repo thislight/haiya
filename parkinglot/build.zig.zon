@@ -1,0 +1,14 @@
+.{
+    .name = "parkinglot",
+    .version = "0.1.0",
+    .paths = .{
+        "parkinglot.zig",
+        "build.zig",
+        "build.zig.zon",
+    },
+    .dependencies = .{
+        .typetool = .{
+            .path = "../typetool",
+        },
+    },
+}

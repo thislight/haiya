@@ -1,0 +1,34 @@
+\\ try validateContext(context, struct {
+\\     sessions: []*@import("../Session.zig"),
+\\ });
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf8" />
+    <title>Server Status</title>
+</head>
+
+<body>
+    <main>
+        <section>
+            <h2>Server Status</h2>
+        </section>
+        <section>
+            <h2>Sessions</h2>
+            \\ for (context.sessions) |item| {
+                <div>
+                    <div>
+                        <a href={format("\"./sessions/{}\"", .{@intFromPtr(item)})}>
+                            { @intFromPtr(item) }
+                        </a>
+                        <span>{ format("{}", .{item.state}) }</span>
+                        <span>{ format("{}", .{item.version}) }</span>
+                    </div>
+                </div>
+            \\ }
+        </section>
+    </main>
+</body>
+
+</html>
