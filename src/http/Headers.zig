@@ -150,6 +150,17 @@ pub fn transferEncoding(self: *const Self) ?ContentEncoding {
     return ContentEncoding.match(valueText);
 }
 
+pub fn transferEncodingHas(self: *const Self, encoding: ContentEncoding) bool {
+    const encodings = self.getOneEntry("Transfer-Encoding") orelse return false;
+    var iter = encodings.iterateList();
+    while (iter.next()) |item| {
+        if (std.mem.eql(u8, encoding.text(), item.value)) {
+            return true;
+        }
+    }
+    return false;
+}
+
 /// Set header "Transfer-Encoding".
 ///
 /// If the `value` is `null`, the header will be removed.

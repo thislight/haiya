@@ -420,7 +420,7 @@ pub fn writeBodyNoContent(self: *Self) !void {
 /// Set up the response for compressing and writing body in chunks, and send the
 /// headers to the peer.
 ///
-/// If your content is already compressed and you want ask the user agent decompress
+/// If your content is already compressed and you want to ask the user agent decompress
 /// it, just set `Content-Encoding: <compression>` header and write the body normally.
 ///
 /// You use this function only if you are required to compress the data on-the-fly.
@@ -461,4 +461,243 @@ pub fn writeBodyStartCompressed(self: *Self, contentType: []const u8) !Compresse
 
 pub fn compressAndWriteBody() void {
     @compileError("TODO");
+}
+
+fn requestBodySize(self: Self) BodySize {
+    if (self.request.headers.transferEncodingHas(.chunked)) {
+        return .Infinite;
+    } else if (self.request.headers.contentLength()) |length| {
+        return .{ .Sized = length };
+    } else {
+        return .{ .Sized = 0 };
+    }
+}
+
+pub fn ChunkedBodyReader(comptime optimize: Stream.ReadOptimize) type {
+    return struct {
+        stream: *Stream,
+        chunk: ChunkReadState = ChunkReadState.init,
+        finalChunk: bool = false,
+
+        const ReaderContext = @This();
+
+        const ChunkReadState = union(enum) {
+            /// The length part
+            Length: std.BoundedArray(u8, 10),
+            Content: ContentState,
+            Trailers: u8,
+
+            const init = ChunkReadState{
+                .Length = .{},
+            };
+
+            const ContentState = struct {
+                len: usize = 0,
+                read: usize = 0,
+            };
+        };
+
+        pub const ReadError = error{
+            BadLength,
+            EndOfStream,
+        };
+
+        pub fn read(self: *ReaderContext, dst: []u8) !usize {
+            const chunkState = &self.chunk;
+
+            switch (chunkState.*) {
+                .Length => |*lengthTextBuf| {
+                    if (self.finalChunk) {
+                        return ReadError.EndOfStream;
+                    }
+                    while (true) {
+                        const buf = try self.stream.readBuffer();
+                        defer buf.deinit();
+                        self.stream.lock.lock();
+                        defer self.stream.lock.unlock();
+
+                        const eolIdx = std.mem.indexOfScalar(u8, buf.value, '\n') orelse {
+                            try lengthTextBuf.appendSlice(buf.value);
+                            continue; // Read additional buffer for size.
+                        };
+                        if (eolIdx == 0 or buf.value[eolIdx - 1] != '\r') {
+                            return ReadError.BadLength;
+                        }
+
+                        try lengthTextBuf.appendSlice(buf.value[0..eolIdx]);
+
+                        const size = std.fmt.parseInt(usize, lengthTextBuf.constSlice(), 16) catch {
+                            return ReadError.BadLength;
+                        };
+
+                        chunkState.* = .{ .Content = .{
+                            .len = size,
+                        } };
+
+                        if (size == 0) {
+                            self.finalChunk = true;
+                        }
+
+                        if (buf.value.len - 1 != eolIdx) {
+                            // Push back
+                            try self.stream.inputs.insert(
+                                self.stream.session.allocator,
+                                0,
+                                buf.slice(eolIdx + 1, buf.value.len),
+                            );
+                            self.stream.onUpdates.notifyAll();
+                        }
+
+                        return self.read(dst);
+                    }
+                },
+                .Content => |*state| {
+                    var dstOfs: usize = 0;
+                    while (true) {
+                        const readableSize = state.len - state.read;
+                        if (readableSize == 0) {
+                            chunkState.* = .{ .Trailers = 0 };
+                            return dstOfs;
+                        }
+                        const buf = try self.stream.readBuffer();
+                        defer buf.deinit();
+                        self.stream.lock.lock();
+                        defer self.stream.lock.unlock();
+
+                        const src = buf.value[0..@min(readableSize, buf.value.len)];
+                        const rest = dst[dstOfs..];
+                        if (src.len > rest.len) {
+                            std.mem.copyForwards(u8, rest, src[0..rest.len]);
+                            state.read += rest.len;
+                            try self.stream.inputs.insert(
+                                self.stream.session.allocator,
+                                0,
+                                buf.slice(rest.len, buf.value.len),
+                            );
+                            self.stream.onUpdates.notifyAll();
+                            return dst.len;
+                        } else {
+                            // src.len <= rest.len
+                            std.mem.copyForwards(u8, rest[0..src.len], src);
+                            state.read += src.len;
+                            dstOfs += src.len;
+                            switch (optimize) {
+                                .Bandwidth => {},
+                                .Latency => return dstOfs,
+                            }
+                        }
+                    }
+                },
+                .Trailers => |*pc| {
+                    while (true) {
+                        const buf = try self.stream.readBuffer();
+                        defer buf.deinit();
+                        const eolIdx = std.mem.indexOfScalar(u8, buf.value, '\n') orelse {
+                            pc.* = buf.value[buf.value.len - 1];
+                            continue;
+                        };
+                        const lastChar = if (eolIdx == 0) pc.* else buf.value[eolIdx - 1];
+                        if (lastChar == '\r') {
+                            chunkState.* = ChunkReadState.init;
+                            return self.read(dst);
+                        }
+                    }
+                },
+            }
+        }
+    };
+}
+
+pub fn RegularBodyReader(comptime optimize: Stream.ReadOptimize) type {
+    return struct {
+        size: BodySize,
+        readSize: usize = 0,
+        stream: *Stream,
+
+        const ReaderContext = @This();
+
+        fn readableSize(self: ReaderContext) usize {
+            return switch (self.size) {
+                .Infinite => std.math.maxInt(usize),
+                .Sized => |sz| if (sz > 0) sz - self.readSize else 0,
+            };
+        }
+
+        pub fn read(self: *ReaderContext, dst: []u8) !usize {
+            var dstOfs: usize = 0;
+            while (true) {
+                const restSz = self.readableSize();
+                if (restSz == 0) {
+                    return error.EndOfStream;
+                }
+
+                const buf = try self.stream.readBuffer();
+                defer buf.deinit();
+                self.stream.lock.lock();
+                defer self.stream.lock.unlock();
+
+                const src = buf.value[0..@min(restSz, buf.value.len)];
+                const rest = dst[dstOfs..];
+                if (src.len > rest.len) {
+                    std.mem.copyForwards(u8, rest, src[0..rest.len]);
+                    try self.stream.inputs.insert(
+                        self.stream.session.allocator,
+                        0,
+                        buf.slice(rest.len, buf.value.len),
+                    );
+                    self.stream.onUpdates.notifyAll();
+                    return dst.len;
+                } else { // src.len <= dst.len
+                    std.mem.copyForwards(u8, rest, src);
+                    dstOfs += src.len;
+                    switch (optimize) {
+                        .Latency => return dstOfs,
+                        else => {},
+                    }
+                }
+            }
+        }
+    };
+}
+
+pub fn AutoBodyReader(comptime optimize: Stream.ReadOptimize) type {
+    return union(enum) {
+        Chunked: ChunkedBodyReader(optimize),
+        Regular: RegularBodyReader(optimize),
+
+        pub fn read(self: *@This(), dst: []u8) !usize {
+            return switch (self.*) {
+                .Chunked => |*r| try r.read(dst),
+                .Regular => |*r| try r.read(dst),
+            };
+        }
+
+        pub const Reader = std.io.GenericReader(
+            *@This(),
+            @typeInfo(@typeInfo(@TypeOf(@This().read)).Fn.return_type.?).ErrorUnion.error_set,
+            @This().read,
+        );
+
+        pub fn reader(self: *@This()) Reader {
+            return Reader{ .context = self };
+        }
+    };
+}
+
+/// Create a reader to read the request body.
+///
+/// The reader holds the lock of the stream while reading data.
+/// This function does not hold any lock.
+///
+/// TODO: support compression?
+pub fn bodyReader(self: Self, comptime optimize: Stream.ReadOptimize) AutoBodyReader(optimize) {
+    const R = AutoBodyReader(optimize);
+    if (self.stream.session.transport == .http1) {
+        const size = self.requestBodySize();
+        return switch (size) {
+            .Infinite => R{ .Chunked = ChunkedBodyReader(optimize){ .stream = self.stream } },
+            .Sized => R{ .Regular = RegularBodyReader(optimize){ .stream = self.stream, .size = size } },
+        };
+    }
+    return R{ .Regular = RegularBodyReader(optimize){ .stream = self.stream, .size = self.requestBodySize() } };
 }

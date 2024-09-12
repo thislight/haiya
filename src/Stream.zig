@@ -185,7 +185,6 @@ pub fn readBuffer(self: *Stream) !ArcBuffer.Ref {
             defer self.session.lock.unlock();
             if (self.session.activeEvent == null) {
                 try self.session.setReadBuffer();
-                self.session.submit(1);
             }
         }
         self.onUpdates.wait(&self.lock);
@@ -381,4 +380,85 @@ pub fn hasNewTranscation(self: *Stream) !*Transcation {
         .unspecified => unreachable,
         else => unreachable,
     }
+}
+
+/// The reader optimizing target.
+///
+/// If you don't know how to choose, choose `.Bandwidth`. Most of time your app doesn't
+/// need to optimize for low latency. You can always change it later.
+pub const ReadOptimize = enum {
+    /// This reader is optimized for low latency.
+    ///
+    /// The reader may return the result as soon as they are available.
+    /// This option can avoid common latency causes like:
+    ///
+    /// - waiting to fulfill the provided buffer,
+    ///
+    /// but it may add additional reads to complete the task.
+    ///
+    /// This option can not avoid natrual latency causes, like:
+    ///
+    /// - The latency for TLS encrypting/decrypting,
+    /// - Parsing requests, formating responses.
+    ///
+    /// They are must-have latency for operating.
+    Latency,
+    /// This reader is optimized for large bandwidth.
+    ///
+    /// The reader should fulfill the provided buffer as possible,
+    /// so the batch operation works better and the number of reads can be reduced.
+    Bandwidth,
+};
+
+pub fn InputReaderContext(comptime optimize: ReadOptimize) type {
+    return struct {
+        owner: *Stream,
+        buffer: ?ArcBuffer.Ref = null,
+        bufferOfs: usize = 0,
+
+        fn nextBuffer(self: *@This()) !ArcBuffer.Ref {
+            const buf = try self.owner.readBuffer();
+            self.buffer = buf;
+            self.bufferOfs = 0;
+            return buf;
+        }
+
+        pub fn read(self: *@This(), dst: []u8) !usize {
+            var dstOfs: usize = 0;
+            while (true) {
+                const buffer = self.buffer orelse try self.nextBuffer();
+                const src = buffer.value[self.bufferOfs..];
+                const rest = dst[dstOfs..];
+                if (src.len > rest.len) {
+                    std.mem.copyForwards(u8, rest, src[0..rest.len]);
+                    self.bufferOfs += rest.len;
+                    return dst.len;
+                } else { // src.len <= rest.len
+                    std.mem.copyForwards(u8, rest[0..src.len], src);
+                    dstOfs += src.len;
+                    buffer.deinit();
+                    self.buffer = null;
+                    switch (optimize) {
+                        .Latency => return dstOfs,
+                        .Bandwidth => {},
+                    }
+                }
+            }
+        }
+
+        pub const ReadError = @typeInfo(@typeInfo(@TypeOf(@This().read)).Fn.return_type.?).ErrorUnion.error_set;
+
+        pub const Reader = std.io.GenericReader(*@This(), ReadError, @This().read);
+
+        pub fn reader(self: *@This()) Reader {
+            return Reader{ .context = self };
+        }
+    };
+}
+
+/// The reader of the raw input.
+///
+/// Note: this reader doesn't support push back, use at your own risk.
+pub fn inputReader(self: *Stream, comptime optimize: ReadOptimize) InputReaderContext(optimize) {
+    return InputReaderContext(optimize){ .owner = self };
 }
