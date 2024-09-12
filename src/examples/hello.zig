@@ -15,7 +15,7 @@ pub fn countedHelloWorld(t: *haiya.Transcation) !void {
     });
     const value = counter.fetchAdd(1, .seq_cst) + 1;
 
-    _ = try t.resetResponse(.OK);
+    _ = t.resetResponse(.OK);
     const TEXT = "Hello, World!";
 
     const addsize = std.fmt.count("Visited {} time.", .{value}) +
@@ -39,7 +39,7 @@ pub fn countedHelloWorld(t: *haiya.Transcation) !void {
 pub fn namedHelloWorld(t: *haiya.Transcation, args: routers.PathArgs) !void {
     defer t.deinit();
 
-    _ = try t.resetResponse(.OK);
+    _ = t.resetResponse(.OK);
     const name = args.ref[0];
     const content = try std.fmt.allocPrint(
         t.arena(),

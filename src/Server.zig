@@ -130,7 +130,7 @@ fn runner(task: *xev.ThreadPool.Task) void {
 }
 
 fn handleTooManyRequests(transcation: *Transcation) !void {
-    _ = try transcation.resetResponse(.@"Too Many Requuests");
+    _ = transcation.resetResponse(.@"Too Many Requuests");
     try transcation.writeResponse();
     try transcation.stream.flush();
     transcation.deinit();

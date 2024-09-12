@@ -17,13 +17,13 @@ fn handleRequest(ud: ?*anyopaque, t: *haiya.Transcation) !void {
     if (std.mem.eql(u8, t.request.method, "GET")) {
         const TEXT = "Hello World!";
 
-        _ = try t.resetResponse(.OK);
+        _ = t.resetResponse(.OK);
         var writer = try t.writeBodyStart(.Infinite, "text/plain");
 
         _ = try writer.write(TEXT);
         try writer.close();
     } else {
-        _ = try t.resetResponse(.@"Bad Request");
+        _ = t.resetResponse(.@"Bad Request");
         try t.writeBodyNoContent();
     }
 }

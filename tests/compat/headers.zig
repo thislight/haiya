@@ -11,14 +11,14 @@ fn handleRequest(_: ?*anyopaque, t: *haiya.Transcation) !void {
     if (std.mem.eql(u8, t.request.method, "GET")) {
         const TEXT = "Hello World!";
 
-        const resp = try t.resetResponse(.OK);
+        const resp = t.resetResponse(.OK);
         try resp.headers.append(t.arena(), "X-Test", "1");
         var writer = try t.writeBodyStart(.{ .Sized = TEXT.len }, "text/plain");
 
         _ = try writer.write(TEXT);
         try writer.close();
     } else {
-        _ = try t.resetResponse(.@"Bad Request");
+        _ = t.resetResponse(.@"Bad Request");
         try t.writeBodyNoContent();
     }
 }

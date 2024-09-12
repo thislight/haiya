@@ -72,9 +72,7 @@ fn selectContentEncoding(values: []const Headers.ContentEncoding) ?Headers.Conte
 /// The arena allocator will be used.
 ///
 /// Returns the response.
-///
-/// TODO: if no need, remove the error union
-pub fn resetResponse(self: *Self, statusCode: StatusCode) !*Response {
+pub fn resetResponse(self: *Self, statusCode: StatusCode) *Response {
     const resp = &self.response;
 
     resp.* = Response{
@@ -442,6 +440,7 @@ pub fn writeBodyStartCompressed(self: *Self, contentType: []const u8) !Compresse
 
     if (useEncoding) |encoding| {
         try self.response.headers.setContentEncoding(self.arena(), encoding);
+        // FIXME: Use transfer-encoding?
         try self.response.headers.replaceOrPut(self.arena(), "Vary", "Accept-Encoding");
         // TODO: merge, not replace
     }
