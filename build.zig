@@ -148,8 +148,16 @@ pub fn build(b: *std.Build) void {
                 .root_source_file = filename,
                 .optimize = optimize,
                 .target = target,
-                .strip = false,
                 .filters = testFilters,
+                .error_tracing = true,
+                .strip = false,
+                .name = std.mem.replaceOwned(
+                    u8,
+                    b.allocator,
+                    filename.src_path.sub_path[0 .. dfilename.len - 4], // remove the ".zig"
+                    "/",
+                    "_",
+                ) catch @panic("OOM"),
             });
             exe.root_module.addImport("haiya", modHaiya);
             exe.root_module.addImport("rio", modRio);
@@ -168,7 +176,6 @@ pub fn build(b: *std.Build) void {
 const BEHAVIOUR_TEST_FILES: []const []const u8 = &.{
     "compat/headers.zig",
     "compat/request-body.zig",
-    "compat/h1/chunked-transfered.zig",
     "compat/h1/keep-alive.zig",
-    "compat/h1/compression.zig",
+    "compat/h1/encodings.zig",
 };
