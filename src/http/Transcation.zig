@@ -499,7 +499,6 @@ pub fn ChunkedBodyReader(comptime optimize: Stream.ReadOptimize) type {
 
         pub const ReadError = error{
             BadLength,
-            EndOfStream,
         };
 
         pub fn read(self: *ReaderContext, dst: []u8) !usize {
@@ -508,7 +507,7 @@ pub fn ChunkedBodyReader(comptime optimize: Stream.ReadOptimize) type {
             switch (chunkState.*) {
                 .Length => |*lengthTextBuf| {
                     if (self.finalChunk) {
-                        return ReadError.EndOfStream;
+                        return 0;
                     }
                     while (true) {
                         const buf = try self.stream.readBuffer();
@@ -628,10 +627,13 @@ pub fn RegularBodyReader(comptime optimize: Stream.ReadOptimize) type {
             while (true) {
                 const restSz = self.readableSize();
                 if (restSz == 0) {
-                    return error.EndOfStream;
+                    return dstOfs;
                 }
 
-                const buf = try self.stream.readBuffer();
+                const buf = self.stream.readBuffer() catch |err| switch (err) {
+                    error.ConnRefused => return dstOfs,
+                    else => return err,
+                };
                 defer buf.deinit();
                 self.stream.lock.lock();
                 defer self.stream.lock.unlock();
@@ -645,11 +647,13 @@ pub fn RegularBodyReader(comptime optimize: Stream.ReadOptimize) type {
                         0,
                         buf.slice(rest.len, buf.value.len),
                     );
+                    self.readSize += rest.len;
                     self.stream.onUpdates.notifyAll();
                     return dst.len;
                 } else { // src.len <= dst.len
                     std.mem.copyForwards(u8, rest, src);
                     dstOfs += src.len;
+                    self.readSize += src.len;
                     switch (optimize) {
                         .Latency => return dstOfs,
                         else => {},

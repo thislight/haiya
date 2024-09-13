@@ -180,6 +180,9 @@ pub fn readBuffer(self: *Stream) !ArcBuffer.Ref {
         return ref;
     }
     while (self.inputs.items.len == 0) {
+        if (self.state == .Closed) {
+            return rio.RecvError.ConnRefused;
+        }
         {
             self.session.lock.lock();
             defer self.session.lock.unlock();
@@ -188,9 +191,6 @@ pub fn readBuffer(self: *Stream) !ArcBuffer.Ref {
             }
         }
         self.onUpdates.wait(&self.lock);
-        if (self.state == .Closed) {
-            return rio.RecvError.ConnRefused;
-        }
     }
     return self.inputs.pop();
 }
@@ -359,6 +359,7 @@ pub fn hasNewTranscation(self: *Stream) !*Transcation {
                     errdefer nref.deinit();
                     try self.inputs.insert(self.session.allocator, 0, nref);
                     errdefer _ = self.inputs.orderedRemove(0);
+                    self.onUpdates.notifyAll();
                 }
                 self.inProgressTranscation = try self.nextTranscation.copyToArena();
                 // No content copied, shallowDeinit() is enough.
@@ -373,6 +374,7 @@ pub fn hasNewTranscation(self: *Stream) !*Transcation {
                     0,
                     nref,
                 );
+                self.onUpdates.notifyAll();
                 self.iRState = .{ .h1 = nstate };
                 return TranscationCheckError.RetryLater;
             }

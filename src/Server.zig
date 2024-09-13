@@ -142,7 +142,8 @@ const TranscationContext = struct {
     transcation: *Transcation,
 
     fn destory(self: *@This()) void {
-        self.server.allocator.destroy(self);
+        const server = self.server;
+        server.allocator.destroy(self);
     }
 };
 
@@ -431,7 +432,7 @@ pub fn Serve(Ud: type) type {
         fn wrappedHandleFn(ud: ?*anyopaque, t: *Transcation) void {
             const self: *Context = @alignCast(@ptrCast(ud));
             self.handleFn(self.ud, t) catch |err| {
-                log.err("uncaught error: {}", .{err});
+                log.err("uncaught error: {}, stack trace: {?}", .{ err, @errorReturnTrace() });
             };
         }
 
