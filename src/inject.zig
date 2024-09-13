@@ -80,7 +80,7 @@ pub fn run(f: anytype, injects: anytype) @typeInfo(@TypeOf(f)).Fn.return_type.? 
             }
             @compileError(std.fmt.comptimePrint(
                 "injectable \"{s}\" is not found at slot #{} for {s}, all injectables: {}",
-                .{ @typeName(p.type.?), i, @typeName(@TypeOf(f)), injects },
+                .{ @typeName(p.type.?), i, @typeName(@TypeOf(f)), @TypeOf(injects) },
             ));
         };
     }
