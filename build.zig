@@ -176,6 +176,7 @@ pub fn build(b: *std.Build) void {
 const BEHAVIOUR_TEST_FILES: []const []const u8 = &.{
     "compat/headers.zig",
     "compat/request-body.zig",
+    "compat/cookies.zig",
     "compat/h1/keep-alive.zig",
     "compat/h1/encodings.zig",
 };

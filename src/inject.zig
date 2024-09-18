@@ -32,15 +32,16 @@ pub fn DependencyReturnType(Closure: type) type {
 
 /// This is an minimal example of the dynamic dependency protocol.
 ///
-/// You must define `ref` and `Requires` to declare the type for a dynamic dependency.
+/// You must define `inject` to declare the type for a dynamic dependency.
+/// The `inject` returned value must be the type of the dependency. For example:
+/// if you declare `Depends(anyclosure)`, the `anyclosure` must return `Depends(anyclosure)`.
 ///
-/// - The `Requires` can be an closure, see typetool's `invokeClosure`.
-/// - The `ref` must be the result of the closure.
+/// - The `inject` can be an closure, see typetool's `invokeClosure`.
 pub fn Depends(closure: anytype) type {
     return struct {
-        ref: DependencyReturnType(@TypeOf(closure)),
+        ref: typetool.ClosureResult(@TypeOf(closure)),
 
-        const Requires = closure;
+        const inject = closure;
     };
 }
 
@@ -49,11 +50,11 @@ fn isStaticInjectable(Slot: type, Inject: type) bool {
 }
 
 fn isDynamicInjectable(Slot: type, Inject: type) bool {
-    return isInjectable(Slot, DependencyReturnType(Inject.Requires));
+    return isInjectable(Slot, DependencyReturnType(Inject.inject));
 }
 
 fn isDynamicInject(T: type) bool {
-    return @typeInfo(T) == .Struct and @hasDecl(T, "Requires");
+    return @typeInfo(T) == .Struct and @hasDecl(T, "inject");
 }
 
 fn isInjectable(Slot: type, Inject: type) bool {
@@ -71,7 +72,7 @@ pub fn run(f: anytype, injects: anytype) @typeInfo(@TypeOf(f)).Fn.return_type.? 
     inline for (inf.params, 0..inf.params.len) |p, i| {
         const argIndex = std.fmt.comptimePrint("{}", .{i});
         @field(args, argIndex) = if (comptime isDynamicInject(p.type.?))
-            .{ .ref = runDependency(p.type.?, injects) }
+            runDependency(p.type.?, injects)
         else staticInjected: {
             inline for (@typeInfo(@TypeOf(injects)).Struct.fields) |field| {
                 if (comptime isStaticInjectable(p.type.?, field.type)) {
@@ -100,19 +101,21 @@ test "run() injects scalars" {
     try run(S.scalar, .{@as(u32, 1)});
 }
 
+fn SmartOffset(comptime offset: u32) type {
+    return struct {
+        ref: u32,
+
+        pub fn inject(root: u32) @This() {
+            return .{ .ref = offset + root };
+        }
+    };
+}
+
 test "run() injects const dynamic dependency" {
     const t = std.testing;
 
-    const SmartOffset = struct {
-        offset: u32,
-
-        pub fn inject(self: @This(), root: u32) u32 {
-            return root + self.offset;
-        }
-    };
-
     const S = struct {
-        fn dynamic(value: Depends(SmartOffset{ .offset = 2 })) !void {
+        fn dynamic(value: SmartOffset(2)) !void {
             try t.expectEqual(@as(u32, 3), value.ref);
         }
     };
@@ -120,10 +123,10 @@ test "run() injects const dynamic dependency" {
     try run(S.dynamic, .{@as(u32, 1)});
 }
 
-fn runDependency(D: type, injects: anytype) DependencyReturnType(@TypeOf(D.Requires)) {
+fn runDependency(D: type, injects: anytype) DependencyReturnType(@TypeOf(D.inject)) {
     switch (@typeInfo(D)) {
         .Struct => {
-            return run(@TypeOf(D.Requires).inject, typetool.MergeTuple(.{ .{ D.Requires, &D.Requires }, injects }));
+            return run(D.inject, injects);
         },
         else => @compileError("unsupported dependency " ++ @typeName(D)),
     }

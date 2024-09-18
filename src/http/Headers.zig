@@ -3,6 +3,8 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 const assert = std.debug.assert;
 pub const Entry = @import("./HeaderEntry.zig");
+const CookieSet = @import("./cookies.zig").Set;
+const Cookie = @import("./cookies.zig").Cookie;
 
 entries: std.ArrayListUnmanaged(Entry) = .{},
 
@@ -242,4 +244,139 @@ pub fn isConnectionKeepAlive(self: *const Self) ?bool {
         }
     }
     return false;
+}
+
+/// Get single cookie from the request.
+///
+/// The cookies received from client have unknown configuration.
+pub fn getCookie(self: *const Self, expectedKey: []const u8) ?Cookie {
+    const entry = self.getOneEntry("Cookie") orelse return .{};
+    var iter = entry.iterateList();
+    while (iter.next()) |item| {
+        const idx = std.mem.indexOfScalar(u8, item.value, '=') orelse continue;
+        const key = item.value[0..idx];
+        if (!std.mem.eql(u8, expectedKey, key)) {
+            continue;
+        }
+        const value = if (item.value.len - 1 == idx) .{ .ptr = &item.value[idx], .len = 0 } else item.value[idx + 1 ..];
+        return .{
+            .name = key,
+            .value = value,
+        };
+    }
+
+    return null;
+}
+
+/// Get cookies from the request.
+///
+/// The cookies received from client have unknown configuration.
+pub fn cookies(self: *const Self, alloc: std.mem.Allocator) CookieSet {
+    var result = CookieSet{};
+    errdefer result.deinit(alloc);
+
+    const entry = self.getOneEntry("Cookie") orelse return .{};
+    var iter = entry.iterateList();
+    while (iter.next()) |item| {
+        const idx = std.mem.indexOfScalar(u8, item.value, '=') orelse continue;
+        const key = item.value[0..idx];
+        const value = if (item.value.len - 1 == idx) .{ .ptr = &item.value[idx], .len = 0 } else item.value[idx + 1 ..];
+        _ = try result.replaceOrPut(alloc, .{ .name = key, .value = value });
+    }
+
+    return result;
+}
+
+fn parseSetCookie(setItem: *Entry) !Cookie {
+    const eql = std.mem.eql;
+    const startsWith = std.mem.startsWith;
+
+    var iter = setItem.iterateList();
+    const kv = iter.next() orelse error.BadFormat;
+    const sepIdx = std.mem.indexOfScalar(u8, kv.value, '=') orelse error.BadFormat;
+    const key = kv.value[0..sepIdx];
+    const value = if (kv.value.len - 1 == sepIdx) .{ .ptr = &kv.value[sepIdx], .len = 0 } else kv.value[sepIdx + 1 ..];
+    var c = Cookie{
+        .name = key,
+        .value = value,
+        .cfg = .{},
+    };
+    const cfg = &c.cfg.?;
+
+    while (iter.next()) |cfgItem| {
+        if (eql(u8, cfgItem.value, "Secure")) {
+            cfg.secure = true;
+        } else if (eql(u8, cfgItem.value, "HttpOnly")) {
+            cfg.httponly = true;
+        } else if (startsWith(u8, cfgItem.value, "SameSite=")) {
+            const idx = std.mem.indexOfScalar(u8, cfgItem.value, '=') orelse unreachable;
+            const optval = if (cfgItem.value.len - 1 == idx)
+                .{ .ptr = &cfgItem.value[idx], .len = 0 }
+            else
+                cfgItem.value[idx + 1 ..];
+            if (eql(u8, optval, "Lax")) {
+                cfg.sameSite = .Lax;
+            } else if (eql(u8, optval, "None")) {
+                cfg.sameSite = .None;
+            } else if (eql(u8, optval, "Strict")) {
+                cfg.sameSite = .Strict;
+            }
+        } else if (startsWith(u8, cfgItem.value, "Domain=")) {
+            const idx = std.mem.indexOfScalar(u8, cfgItem.value, '=') orelse unreachable;
+            const optval = if (cfgItem.value.len - 1 == idx)
+                .{ .ptr = &cfgItem.value[idx], .len = 0 }
+            else
+                cfgItem.value[idx + 1 ..];
+            cfg.domain = optval;
+        } else if (startsWith(u8, cfgItem.value, "Path=")) {
+            const idx = std.mem.indexOfScalar(u8, cfgItem.value, '=') orelse unreachable;
+            const optval = if (cfgItem.value.len - 1 == idx)
+                .{ .ptr = &cfgItem.value[idx], .len = 0 }
+            else
+                cfgItem.value[idx + 1 ..];
+            cfg.path = optval;
+        }
+    }
+
+    return c;
+}
+
+/// Get cookies from the response.
+pub fn setCookies(self: *const Self, alloc: std.mem.Allocator) CookieSet {
+    var result = CookieSet{};
+    errdefer result.deinit(alloc);
+
+    var itemIter = self.findKey("Set-Cookie");
+    while (itemIter.next()) |setItem| {
+        const item = parseSetCookie(setItem) catch continue;
+        _ = try result.replaceOrPut(alloc, item);
+    }
+
+    return result;
+}
+
+fn filterSetCookieEntry(itemIter: *KeyFinder, key: []const u8) ?*Entry {
+    while (itemIter.next()) |setItem| {
+        var iter = setItem.iterateList();
+        const kv = iter.next() orelse continue;
+        if (!(kv.value.len > key.len + 1 and std.mem.eql(u8, key, kv.value[0..key.len]) and kv.value[key.len] == '=')) {
+            continue;
+        }
+        return setItem;
+    }
+    return null;
+}
+
+/// Replace or put the cookie. The `cookie` content is copied by `alloc`.
+pub fn replaceOrPutCookie(self: *Self, alloc: std.mem.Allocator, cookie: Cookie) !void {
+    var iter = self.findKey("Set-Cookie");
+    while (filterSetCookieEntry(&iter, cookie.name)) |_| {
+        const e = iter.removeThis(self);
+        e.deinit(alloc);
+    }
+    const value = try std.fmt.allocPrint(alloc, "{}", .{cookie});
+    try self.entries.append(alloc, .{
+        .key = Entry.CachedKey.findCache("Set-Cookie").?.key,
+        .value = value,
+    });
 }

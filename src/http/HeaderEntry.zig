@@ -11,6 +11,7 @@ pub const CachedKey = struct {
     pub const ALL: []const CachedKey = &.{
         .{ .key = "Content-Type" },
         .{ .key = "Host" },
+        .{ .key = "Set-Cookie" },
     };
 
     pub fn isFromCache(other: []const u8) bool {
