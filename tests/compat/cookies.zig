@@ -14,6 +14,8 @@ fn setCookieDep(t: *haiya.Transcation, testCookie: haiya.Cookie("test")) !void {
 }
 
 fn setMultipleCookies(t: *haiya.Transcation) !void {
+    defer t.deinit();
+
     const resp = t.resetResponse(.@"No Content");
     try resp.headers.replaceOrPutCookie(t.arena(), .{
         .name = "test1",
@@ -25,6 +27,7 @@ fn setMultipleCookies(t: *haiya.Transcation) !void {
         .value = "test",
         .cfg = .{},
     });
+    try t.writeBodyNoContent();
 }
 
 const Router = haiya.routers.DefineRouter(std.meta.Tuple(&.{}), .{
