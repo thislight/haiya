@@ -2,6 +2,7 @@ const Transcation = @import("./http/Transcation.zig");
 pub const RawCookie = @import("./http/cookies.zig").Cookie;
 pub const Set = @import("./http/cookies.zig").Set;
 
+/// Dependency of cookie. Use `RawCookie` for the original cookie structure.
 pub fn Cookie(comptime key: []const u8) type {
     return struct {
         cx: *Transcation,
@@ -21,6 +22,7 @@ pub fn Cookie(comptime key: []const u8) type {
             });
         }
 
+        /// Create an injection.
         pub fn inject(t: *Transcation) @This() {
             return .{ .cx = t };
         }

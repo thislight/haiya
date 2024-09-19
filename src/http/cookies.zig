@@ -1,6 +1,7 @@
 const std = @import("std");
 const Headers = @import("./Headers.zig");
 
+/// The cookie.
 pub const Cookie = struct {
     /// The cookie name.
     ///
@@ -26,12 +27,18 @@ pub const Cookie = struct {
         None,
     };
 
+    /// Configuration of a cookie.
     pub const Cfg = struct {
+        /// Matching domain
         domain: []const u8 = &.{},
+        /// Matching path
         path: []const u8 = &.{},
         expires: ?void = null, // std does not have date processing
+        /// This cookie should be only set under a secure context.
         secure: bool = false,
+        /// This cookie only should be accessed via HTTP.
         httponly: bool = false,
+        /// The same-site policy
         sameSite: SameSite = .Lax,
     };
 
@@ -58,9 +65,11 @@ pub const Cookie = struct {
     }
 };
 
+/// Set of the cookies.
 pub const Set = struct {
     entries: std.ArrayListUnmanaged(Cookie) = .{},
 
+    /// Replace the cookie. Return the old cookie.
     pub fn replace(self: *Set, cookie: Cookie) ?Cookie {
         for (self.entries.items) |*item| {
             if (std.mem.eql(u8, item.name, cookie.name)) {
@@ -73,6 +82,7 @@ pub const Set = struct {
         return null;
     }
 
+    /// Replace an existing cookie, or put a new cookie.
     pub fn replaceOrPut(self: *Set, alloc: std.mem.Allocator, cookie: Cookie) !?Cookie {
         if (self.replace(cookie)) |o| {
             return o;
@@ -82,10 +92,12 @@ pub const Set = struct {
         }
     }
 
+    /// Deinitialise the list.
     pub fn deinit(self: *Set, alloc: std.mem.Allocator) void {
         self.entries.deinit(alloc);
     }
 
+    /// Search a cookie by name.
     pub fn get(self: *const Set, key: []const u8) ?*const Cookie {
         for (self.entries.items) |*item| {
             if (std.mem.eql(u8, item.name, key)) {
