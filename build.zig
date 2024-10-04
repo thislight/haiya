@@ -43,18 +43,12 @@ pub fn build(b: *std.Build) void {
     const test_step = b.step("test", "Run unit tests");
     const behaviourTests = b.step("test-behaviour", "Run behaviour tests");
 
-    const rio = rio: {
-        const mod = b.addModule("rio", .{
-            .root_source_file = b.path("src/rio.zig"),
-            .optimize = optimize,
-            .target = target,
-        });
-        mod.addImport("parkinglot", b.dependency("parkinglot", .{
-            .target = target,
-            .optimize = optimize,
-        }).module("parkinglot"));
-        break :rio mod;
-    };
+    const rio = b.dependency("rio", .{
+        .optimize = optimize,
+        .target = target,
+    }).module("rio");
+
+    b.modules.put("rio", rio) catch @panic("OOM");
 
     {
         const mod = b.addModule("haiya", .{

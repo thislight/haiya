@@ -57,6 +57,9 @@
         .typetool = .{
             .path = "typetool",
         },
+        .rio = .{
+            .path = "rio",
+        },
         .xev = .{
             .url = "https://github.com/mitchellh/libxev/archive/43c7e4b3308f359e5b758db2d824d7c447f4ed3f.tar.gz",
             .hash = "1220aec83b6367c6bc64ca781828e0ad817fb38e7fca7331bd6d736b6896910f6637",
