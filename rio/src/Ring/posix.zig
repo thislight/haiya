@@ -1,5 +1,6 @@
 const std = @import("std");
-const Fd = std.posix.fd_t;
+
+pub const Fd = std.posix.fd_t;
 
 pub const close = std.posix.close;
 

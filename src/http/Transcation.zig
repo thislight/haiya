@@ -631,7 +631,7 @@ pub fn RegularBodyReader(comptime optimize: Stream.ReadOptimize) type {
                 }
 
                 const buf = self.stream.readBuffer() catch |err| switch (err) {
-                    error.ConnRefused => return dstOfs,
+                    error.ConnectionRefused => return dstOfs,
                     else => return err,
                 };
                 defer buf.deinit();

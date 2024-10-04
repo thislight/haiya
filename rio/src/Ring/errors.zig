@@ -1,46 +1,18 @@
-pub const RecvError = error{
-    Again,
-    BadF,
-    ConnRefused,
-    Fault,
-    Intr,
-    Inval,
-    NotConn,
-    NotSock,
-    ConnReset,
-};
+const std = @import("std");
+pub const RecvError = std.posix.RecvFromError;
 
-pub const AcceptError = error{
-    Again,
-    BadF,
-    NotSock,
-    OpNotSupp,
-    Fault,
-    Perm,
-    NoMem,
-};
+pub const AcceptError = std.posix.AcceptError;
 
-pub const SendError = error{
-    BadF,
-    NotSock,
-    Fault,
-    MsgSize,
-    Again,
-    NoBufs,
-    Intr,
-    NoMem,
-    Inval,
-    Pipe,
-};
+pub const SendError = std.posix.SendError;
 
 pub const CloseError = error{
-    BadF,
-    Intr,
+    BadFd,
+    Interrupted,
     IO,
-};
+} || std.posix.UnexpectedError;
 
 pub const CancelError = error{
-    NoEnt,
-    Inval,
+    NoEntity,
+    Invalid,
     Already,
-};
+} || std.posix.UnexpectedError;

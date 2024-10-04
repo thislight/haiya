@@ -89,18 +89,18 @@ pub const Completion = struct {
     pub fn resAsRecv(self: Completion) RecvError!u31 {
         return switch (self.err()) {
             .SUCCESS => @intCast(self.res()),
-            .AGAIN => RecvError.Again,
-            .BADF => RecvError.BadF,
-            .CONNREFUSED => RecvError.ConnRefused,
-            .FAULT => RecvError.Fault,
-            .INTR => RecvError.Intr,
-            .INVAL => RecvError.Inval,
-            .NOTCONN => RecvError.NotConn,
-            .NOTSOCK => RecvError.NotSock,
-            .CONNRESET => RecvError.ConnReset,
-            else => |v| {
+            .AGAIN => RecvError.WouldBlock,
+            .BADF => RecvError.NetworkSubsystemFailed,
+            .CONNREFUSED => RecvError.ConnectionRefused,
+            .FAULT => RecvError.Unexpected,
+            .INTR => RecvError.Unexpected,
+            .INVAL => RecvError.Unexpected,
+            .NOTCONN => RecvError.SocketNotConnected,
+            .NOTSOCK => RecvError.Unexpected,
+            .CONNRESET => RecvError.ConnectionResetByPeer,
+            else => |v| blk: {
                 log.err("resAsRecv() unknown code {}", .{v});
-                unreachable;
+                break :blk RecvError.Unexpected;
             },
         };
     }
@@ -108,51 +108,51 @@ pub const Completion = struct {
     pub fn resAsAccept(self: Completion) AcceptError!Fd {
         return switch (self.err()) {
             .SUCCESS => self.res(),
-            .AGAIN => AcceptError.Again,
-            .BADF => AcceptError.BadF,
-            .NOTSOCK => AcceptError.NotSock,
-            .OPNOTSUPP => AcceptError.OpNotSupp,
-            .FAULT => AcceptError.Fault,
-            .PERM => AcceptError.Perm,
-            .NOMEM, .NOBUFS => AcceptError.NoMem,
-            else => unreachable,
+            .AGAIN => AcceptError.WouldBlock,
+            .BADF => AcceptError.Unexpected,
+            .NOTSOCK => AcceptError.FileDescriptorNotASocket,
+            .OPNOTSUPP => AcceptError.OperationNotSupported,
+            .FAULT => AcceptError.Unexpected,
+            .PERM => AcceptError.BlockedByFirewall,
+            .NOMEM, .NOBUFS => AcceptError.SystemResources,
+            else => AcceptError.Unexpected,
         };
     }
 
     pub fn resAsSend(self: Completion) SendError!u31 {
         return switch (self.err()) {
             .SUCCESS => @intCast(self.res()),
-            .BADF => SendError.BadF,
-            .NOTSOCK => SendError.NotSock,
-            .FAULT => SendError.Fault,
-            .MSGSIZE => SendError.MsgSize,
-            .AGAIN => SendError.Again,
-            .NOBUFS => SendError.NoBufs,
-            .INTR => SendError.Intr,
-            .NOMEM => SendError.NoMem,
-            .INVAL => SendError.Inval,
-            .PIPE => SendError.Pipe,
-            else => unreachable,
+            .BADF => SendError.Unexpected,
+            .NOTSOCK => SendError.FileDescriptorNotASocket,
+            .FAULT => SendError.Unexpected,
+            .MSGSIZE => SendError.MessageTooBig,
+            .AGAIN => SendError.WouldBlock,
+            .NOBUFS => SendError.SystemResources,
+            .INTR => SendError.Unexpected,
+            .NOMEM => SendError.Unexpected,
+            .INVAL => SendError.Unexpected,
+            .PIPE => SendError.BrokenPipe,
+            else => SendError.Unexpected,
         };
     }
 
     pub fn resAsClose(self: Completion) CloseError!void {
         return switch (self.err()) {
             .SUCCESS => {},
-            .BADF => CloseError.BadF,
-            .INTR => CloseError.Intr,
+            .BADF => CloseError.BadFd,
+            .INTR => CloseError.Intrrupted,
             .IO => CloseError.IO,
-            else => unreachable,
+            else => CloseError.Unexpected,
         };
     }
 
     pub fn resAsCancel(self: Completion) CancelError!void {
         return switch (self.err()) {
             .SUCCESS => {},
-            .NOENT => CancelError.NoEnt,
-            .INVAL => CancelError.Inval,
+            .NOENT => CancelError.NoEntity,
+            .INVAL => CancelError.Invalid,
             .ALREADY => CancelError.Already,
-            else => unreachable,
+            else => CancelError.Unexpected,
         };
     }
 

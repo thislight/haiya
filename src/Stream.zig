@@ -181,7 +181,7 @@ pub fn readBuffer(self: *Stream) !ArcBuffer.Ref {
     }
     while (self.inputs.items.len == 0) {
         if (self.state == .Closed) {
-            return rio.RecvError.ConnRefused;
+            return rio.RecvError.ConnectionRefused;
         }
         {
             self.session.lock.lock();
