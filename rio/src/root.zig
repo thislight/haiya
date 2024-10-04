@@ -1,45 +1,25 @@
 const builtin = @import("builtin");
 
 pub const Backend = enum {
+    /// the asynchronous syscall interface on the linux kernel.
     IoUring,
+    /// poll(2) is a POSIX API to fetch events on file descriptors.
     Poll,
+    /// e(xtended) poll is a linux API to fetch events on file descriptors.
+    /// (not implemented)
     EPoll,
 };
 
-fn selectBackend() ?Backend {
-    return switch (builtin.target.os.tag) {
-        .linux => linux: {
-            if (builtin.target.os.isAtLeast(.linux, .{
-                .major = 5,
-                .minor = 15,
-                .patch = 0,
-            }) orelse false) {
-                break :linux .IoUring;
-            } else if (builtin.target.os.isAtLeast(.linux, .{
-                .major = 2,
-                .minor = 5,
-                .patch = 44,
-            }) orelse false) {
-                break :linux .EPoll;
-            } else {
-                break :linux .Poll;
-            }
-        },
-        .windows => .Poll,
-        .macos, .ios, .tvos, .watchos => .Poll,
-        .wasi => .Poll,
-        else => null,
-    };
-}
+pub const backend: Backend = @enumFromInt(@intFromEnum(@import("build_opts").backend));
 
-pub const backend: ?Backend = @as(?Backend, .IoUring) orelse selectBackend();
-
-pub const Ring = switch (backend orelse @compileError("could not detect backend, you can still specify backend manually")) {
+pub const Ring = switch (backend) {
     .IoUring => @import("./Ring/io_uring.zig"),
-    else => @compileError("unknown backend: " ++ @tagName(backend.?)),
+    .Poll => @import("./Ring/poll.zig"),
+    .EPoll => @compileError("TODO"),
 };
 
 pub const Fd = Ring.Fd;
+pub const os = Ring.os;
 
 pub const InitError = Ring.InitError;
 pub const AcceptError = Ring.AcceptError;

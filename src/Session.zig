@@ -243,7 +243,7 @@ pub fn destory(self: *Self) void {
     const fd = self.fd;
     std.debug.assert(self.streams.items.len == 0);
     self.streams.deinit(self.allocator);
-    rio.Ring.closeNow(fd);
+    rio.os.close(fd);
     if (self.activeEvent) |act| {
         switch (act.operation) {
             .CancelReadBuffer, .ReadBuffer => |buf| {

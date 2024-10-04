@@ -1,22 +1,22 @@
 const std = @import("std");
-const os = std.os.linux;
+const lx = std.os.linux;
 const errors = @import("./errors.zig");
 const log = std.log.scoped(.IoUring);
 
-raw: os.IoUring,
+raw: lx.IoUring,
 
 const Ring = @This();
 
-pub const Fd = os.fd_t;
+pub const Fd = lx.fd_t;
 
-pub const Op = os.IORING_OP;
+pub const Op = lx.IORING_OP;
 
 pub const Submission = opaque {
-    fn raw(self: *Submission) *os.io_uring_sqe {
+    fn raw(self: *Submission) *lx.io_uring_sqe {
         return @alignCast(@ptrCast(self));
     }
 
-    fn rawConst(self: *const Submission) *const os.io_uring_sqe {
+    fn rawConst(self: *const Submission) *const lx.io_uring_sqe {
         return @ptrCast(self);
     }
 
@@ -68,7 +68,7 @@ pub const CloseError = errors.CloseError;
 pub const CancelError = errors.CancelError;
 
 pub const Completion = struct {
-    raw: os.io_uring_cqe,
+    raw: lx.io_uring_cqe,
 
     pub fn res(self: Completion) i32 {
         return self.raw.res;
@@ -82,7 +82,7 @@ pub const Completion = struct {
         return self.raw.flags;
     }
 
-    pub fn err(self: Completion) os.E {
+    pub fn err(self: Completion) lx.E {
         return self.raw.err();
     }
 
@@ -158,15 +158,15 @@ pub const Completion = struct {
 
     /// `true` if the socket have more data can be read.
     pub fn sockNonEmpty(self: Completion) bool {
-        return (self.raw.flags & os.IORING_CQE_F_SOCK_NONEMPTY) > 0;
+        return (self.raw.flags & lx.IORING_CQE_F_SOCK_NONEMPTY) > 0;
     }
 
     pub fn sqNeedWakeup(self: Completion) bool {
-        return (self.raw.flags & os.IORING_SQ_NEED_WAKEUP) > 0;
+        return (self.raw.flags & lx.IORING_SQ_NEED_WAKEUP) > 0;
     }
 };
 
-pub const GetSqeError = @typeInfo(@typeInfo(@TypeOf(os.IoUring.get_sqe)).Fn.return_type.?).ErrorUnion.error_set;
+pub const GetSqeError = @typeInfo(@typeInfo(@TypeOf(lx.IoUring.get_sqe)).Fn.return_type.?).ErrorUnion.error_set;
 
 pub fn sqe(self: *Ring) !*Submission {
     const ptr = try self.raw.get_sqe();
@@ -186,7 +186,7 @@ pub const EnterFlags = packed struct {
     pub fn toInt(self: @This()) u32 {
         var result: u32 = 0;
         if (self.getEvents) {
-            result &= os.IORING_ENTER_GETEVENTS;
+            result &= lx.IORING_ENTER_GETEVENTS;
         }
         return result;
     }
@@ -241,19 +241,19 @@ pub const InitFlags = packed struct {
     pub fn toInt(self: @This()) u32 {
         var result: u32 = 0;
         if (self.sqPoll) {
-            result |= os.IORING_SETUP_SQPOLL;
+            result |= lx.IORING_SETUP_SQPOLL;
         }
         if (self.singleIssuer) {
-            result |= os.IORING_SETUP_SINGLE_ISSUER;
+            result |= lx.IORING_SETUP_SINGLE_ISSUER;
         }
         return result;
     }
 };
 
-pub const InitError = @typeInfo(@typeInfo(@TypeOf(os.IoUring.init_params)).Fn.return_type.?).ErrorUnion.error_set;
+pub const InitError = @typeInfo(@typeInfo(@TypeOf(lx.IoUring.init_params)).Fn.return_type.?).ErrorUnion.error_set;
 
 pub fn init(entries: u16, flags: InitFlags) InitError!Ring {
-    const raw = try os.IoUring.init(entries, flags.toInt());
+    const raw = try lx.IoUring.init(entries, flags.toInt());
     return .{ .raw = raw };
 }
 
@@ -275,12 +275,12 @@ pub fn cqReady(self: *Ring) u32 {
 
 /// Create a subring.
 pub fn from(self: *Ring, entries: u16, flags: InitFlags) InitError!Ring {
-    var params = std.mem.zeroInit(os.io_uring_params, .{
+    var params = std.mem.zeroInit(lx.io_uring_params, .{
         .wq_fd = @as(u31, @intCast(self.raw.fd)),
-        .flags = flags.toInt() | os.IORING_SETUP_ATTACH_WQ,
+        .flags = flags.toInt() | lx.IORING_SETUP_ATTACH_WQ,
         .sq_thread_idle = 1000,
     });
-    const raw = try os.IoUring.init_params(entries, &params);
+    const raw = try lx.IoUring.init_params(entries, &params);
     return .{ .raw = raw };
 }
 
@@ -326,23 +326,4 @@ pub fn cancel(self: *Ring, ud: u64, cancelUd: u64) !*Submission {
     return e;
 }
 
-/// Close a fd instantly.
-///
-/// This function does not submit task into the ring.
-pub fn closeNow(fd: Fd) void {
-    std.posix.close(fd);
-}
-
-/// Bind socket to an address.
-///
-/// This function does not submit task into the ring.
-pub fn bindNow(fd: Fd, address: std.net.Address) std.posix.BindError!void {
-    try std.posix.bind(fd, &address.any, address.getOsSockLen());
-}
-
-/// Sets a socket to listen mode.
-///
-/// This function does not submit task into the ring.
-pub fn listenNow(fd: Fd, backlog: u31) std.posix.ListenError!void {
-    try std.posix.listen(fd, backlog);
-}
+pub const os = @import("./posix.zig");

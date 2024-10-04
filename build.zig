@@ -1,5 +1,7 @@
 const std = @import("std");
 
+const Backend = @import("rio").Backend;
+
 const Tool = struct {
     fn addModules(b: *std.Build, mod: *std.Build.Module, target: std.Build.ResolvedTarget, optimize: std.builtin.OptimizeMode) void {
         mod.addImport("typetool", b.dependency("typetool", .{
@@ -32,6 +34,12 @@ pub fn build(b: *std.Build) void {
     // set a preferred release mode, allowing the user to decide how to optimize.
     const optimize = b.standardOptimizeOption(.{});
 
+    const backend = b.option(
+        Backend,
+        "backend",
+        "IO backend (default: IoUring)",
+    ) orelse .IoUring;
+
     const testFilters = b.option(
         []const []const u8,
         "test-filter",
@@ -43,10 +51,16 @@ pub fn build(b: *std.Build) void {
     const test_step = b.step("test", "Run unit tests");
     const behaviourTests = b.step("test-behaviour", "Run behaviour tests");
 
-    const rio = b.dependency("rio", .{
-        .optimize = optimize,
-        .target = target,
-    }).module("rio");
+    const rio = rioMod: {
+        const dep = b.dependency("rio", .{
+            .optimize = optimize,
+            .target = target,
+            .backend = backend,
+            // TODO: zig build user option does not support optional values
+            // Here: https://github.com/ziglang/zig/blob/03457755590c73893bce21f551d5664333baf267/lib/std/Build.zig#L412
+        });
+        break :rioMod dep.module("rio");
+    };
 
     b.modules.put("rio", rio) catch @panic("OOM");
 

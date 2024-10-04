@@ -100,14 +100,9 @@ pub fn tcpListen(self: *Server, address: std.net.Address) !*Accept(rio.Fd) {
         .server = self,
     };
     errdefer std.posix.close(tcp.context);
-    try rio.Ring.bindNow(tcp.context, address);
-    try rio.Ring.listenNow(tcp.context, 128);
-
-    var addrbuf: std.posix.sockaddr.storage = undefined;
-    var addrlen: std.posix.socklen_t = @sizeOf(@TypeOf(addrbuf));
-    try std.posix.getsockname(tcp.context, @ptrCast(&addrbuf), &addrlen);
-    const actualAddress = std.net.Address.initPosix(@ptrCast(&addrbuf));
-    tcp.address = actualAddress;
+    try rio.os.bind(tcp.context, address);
+    try rio.os.listen(tcp.context, 128);
+    tcp.address = try rio.os.getsockname(tcp.context);
 
     return tcp;
 }
@@ -173,7 +168,7 @@ pub fn deinit(self: *Server) void {
     self.threadpool.shutdown();
     self.lock.lock();
     while (self.tcpSockets.popOrNull()) |item| {
-        rio.Ring.closeNow(item.context);
+        rio.os.close(item.context);
     }
     self.tcpSockets.deinit(self.allocator);
     const sessions = self.sessions.lock();
